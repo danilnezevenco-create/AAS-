@@ -47,8 +47,12 @@ public class SuppressionOverlay {
         RenderSystem.defaultBlendFunc();
 
         if (supp > 0.001f) {
-            int maxAlpha = (int) (supp * 200);
-            int edge = (int) (Math.max(width, height) * (0.20f + supp * 0.18f));
+            // Кривая ужесточена: возводим supp в степень < 1, чтобы виньетка темнела заметно
+            // уже при небольшом/среднем подавлении, а не только ближе к максимуму.
+            float ramped = (float) Math.pow(supp, 0.7);
+
+            int maxAlpha = (int) (ramped * 250);           // было 200 - почти полностью непрозрачно на пике
+            int edge = (int) (Math.max(width, height) * (0.28f + ramped * 0.30f)); // было 0.20 + 0.18
 
             int black = 0x000000;
             int transparent = withAlpha(black, 0);
@@ -61,6 +65,14 @@ public class SuppressionOverlay {
             // Лево / право - ступенчатая аппроксимация горизонтального градиента через fill()
             fillHorizontalGradientStepped(graphics, 0, 0, edge, height, opaque, transparent);
             fillHorizontalGradientStepped(graphics, width - edge, 0, width, height, transparent, opaque);
+
+            // Дополнительное сплошное затемнение всего экрана при сильном подавлении - раньше
+            // виньетка оставалась почти прозрачной в центре даже на максимуме, теперь и центр
+            // ощутимо темнеет, а не только края.
+            if (supp > 0.35f) {
+                int centerAlpha = (int) ((supp - 0.35f) / 0.65f * 110);
+                graphics.fill(0, 0, width, height, withAlpha(black, centerAlpha));
+            }
 
             if (supp > 0.6f) {
                 int redAlpha = (int) ((supp - 0.6f) / 0.4f * 90);

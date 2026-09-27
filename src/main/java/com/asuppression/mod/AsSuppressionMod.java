@@ -1,6 +1,6 @@
 package com.asuppression.mod;
 
-import com.asuppression.mod.client.BWEffectHandler;
+import com.asuppression.mod.client.BulletFlybyTracker;
 import com.asuppression.mod.client.ClientSuppressionHandler;
 import com.asuppression.mod.command.SuppressCommand;
 import com.asuppression.mod.event.ServerSuppressionEvents;
@@ -28,6 +28,7 @@ public class AsSuppressionMod {
 
     private static void registerClient() {
         MinecraftForge.EVENT_BUS.register(new ClientSuppressionHandler());
-        MinecraftForge.EVENT_BUS.register(new BWEffectHandler());
+        // Отдельный трекер "близкого пролёта" снарядов (в т.ч. пуль TACZ) - см. класс для деталей
+        MinecraftForge.EVENT_BUS.register(new BulletFlybyTracker());
     }
 }
