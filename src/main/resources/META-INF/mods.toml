@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+issueTrackerURL="https://github.com/"
+
+[[mods]]
+modId="assuppression"
+version="1.0.0"
+displayName="AsSuppression"
+authors="You"
+description='''Squad-style suppression effect mod'''
+
+[[dependencies.assuppression]]
+modId="forge"
+mandatory=true
+versionRange="[47.3.0,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.assuppression]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,)"
+ordering="NONE"
+side="BOTH"

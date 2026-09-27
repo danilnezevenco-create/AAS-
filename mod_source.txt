@@ -1,0 +1,1031 @@
+﻿==========================================
+FILE: gradle-wrapper.properties
+PATH: C:\Users\user\Desktop\mods\AAS подавление\gradle\wrapper\gradle-wrapper.properties
+==========================================
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.8-bin.zip
+networkTimeout=10000
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+
+==========================================
+FILE: BWEffectHandler.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\client\BWEffectHandler.java
+==========================================
+package com.asuppression.mod.client;
+
+import com.asuppression.mod.AsSuppressionMod;
+import com.mojang.blaze3d.shaders.Uniform;
+import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.EffectInstance;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.PostChain;
+import net.minecraft.client.renderer.PostPass;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
+import org.slf4j.Logger;
+
+import java.lang.reflect.Field;
+import java.util.List;
+
+/**
+ * РЈРїСЂР°РІР»СЏРµС‚ С‡С‘СЂРЅРѕ-Р±РµР»С‹Рј РїРѕСЃС‚-РїСЂРѕС†РµСЃСЃ СЌС„С„РµРєС‚РѕРј РєРѕРЅС‚СѓР·РёРё РѕС‚ РІР·СЂС‹РІР°
+ * (assets/assuppression/shaders/post/grayscale.json + program/grayscale.json + core/grayscale.fsh).
+ *
+ * Р’РљР›Р®Р§Р•РќРР• РїРѕ-РїСЂРµР¶РЅРµРјСѓ С‡РµСЂРµР· С€С‚Р°С‚РЅС‹Р№ GameRenderer#loadEffect (СЂРµР·РєРѕ, Р±РµР· С„РµР№Рґ-РёРЅР° - РєР°Рє Рё СЂР°РЅСЊС€Рµ).
+ *
+ * Р’Р«РљР›Р®Р§Р•РќРР• (С„РµР№Рґ-Р°СѓС‚) С‚РµРїРµСЂСЊ РїР»Р°РІРЅРѕРµ. РЈ PostChain РќР•Рў РїСѓР±Р»РёС‡РЅРѕРіРѕ getUniform(String) - РѕРЅ Р»РµР¶РёС‚
+ * РіР»СѓР±Р¶Рµ: PostChain#passes (РїСЂРёРІР°С‚РЅС‹Р№ List<PostPass>) -> PostPass#getEffect() (РїСѓР±Р»РёС‡РЅС‹Р№,
+ * РІРѕР·РІСЂР°С‰Р°РµС‚ EffectInstance) -> EffectInstance#getUniform("Intensity") (РїСѓР±Р»РёС‡РЅС‹Р№, РІРѕР·РІСЂР°С‰Р°РµС‚
+ * Uniform СЃ РјРµС‚РѕРґРѕРј #set(float)). РџРѕСЌС‚РѕРјСѓ СЂРµС„Р»РµРєСЃРёРµР№ РґРѕСЃС‚Р°С‘Рј С‚РѕР»СЊРєРѕ Р”Р’Рђ РїСЂРёРІР°С‚РЅС‹С… РїРѕР»СЏ:
+ *  - GameRenderer#postEffect (СЃР°Рј Р°РєС‚РёРІРЅС‹Р№ PostChain)
+ *  - PostChain#passes (СЃРїРёСЃРѕРє РїСЂРѕС…РѕРґРѕРІ С€РµР№РґРµСЂР°, РѕС‚РєСѓРґР° Р±РµСЂС‘Рј EffectInstance)
+ * Р”Р°Р»СЊС€Рµ РІСЃС‘ С‡РµСЂРµР· С€С‚Р°С‚РЅС‹Рµ РїСѓР±Р»РёС‡РЅС‹Рµ РјРµС‚РѕРґС‹. РќР°Р№РґРµРЅРЅС‹Р№ Uniform РєСЌС€РёСЂСѓРµС‚СЃСЏ РЅР° РІСЂРµРјСЏ Р°РєС‚РёРІРЅРѕСЃС‚Рё
+ * СЌС„С„РµРєС‚Р° (РїРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ loadEffect СЃРѕР·РґР°С‘С‚СЃСЏ РЅРѕРІС‹Р№ PostChain/EffectInstance, РїРѕСЌС‚РѕРјСѓ РєСЌС€
+ * СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РїСЂРё РєР°Р¶РґРѕР№ РЅРѕРІРѕР№ Р°РєС‚РёРІР°С†РёРё).
+ *
+ * Р•СЃР»Рё СЂРµС„Р»РµРєСЃРёСЏ СЃР»РѕРјР°РµС‚СЃСЏ (РґСЂСѓРіР°СЏ РІРµСЂСЃРёСЏ Forge/РјР°РїРїРёРЅРіРѕРІ - РїРѕР»СЏ/РєР»Р°СЃСЃС‹ РЅРµ РЅР°Р№РґРµРЅС‹, ClassCastException
+ * Рё С‚.Рї.), REFLECTION_BROKEN РІР·РІРѕРґРёС‚СЃСЏ РѕРґРёРЅ СЂР°Р· Рё РјРѕРґ С‚РёС…Рѕ РѕС‚РєР°С‚С‹РІР°РµС‚СЃСЏ РЅР° СЃС‚Р°СЂРѕРµ СЂРµР·РєРѕРµ (Р±РµР· С„РµР№РґР°)
+ * РІРєР»/РІС‹РєР», РєР°Рє Р±С‹Р»Рѕ СЂР°РЅСЊС€Рµ - Р±РµР· РїР°РґРµРЅРёСЏ РёРіСЂС‹.
+ */
+public class BWEffectHandler {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static final ResourceLocation GRAYSCALE_EFFECT =
+            new ResourceLocation(AsSuppressionMod.MODID, "shaders/post/grayscale.json");
+
+    // РЈСЂРѕРІРµРЅСЊ flash, РЅР°С‡РёРЅР°СЏ СЃ РєРѕС‚РѕСЂРѕРіРѕ РІРєР»СЋС‡Р°РµС‚СЃСЏ С‡/Р±-С€РµР№РґРµСЂ
+    private static final float ACTIVATE_THRESHOLD = 0.08f;
+
+    // РќР°СЃРєРѕР»СЊРєРѕ Р±С‹СЃС‚СЂРѕ currentIntensity РµРґРµС‚ Рє 0 РєР°Р¶РґС‹Р№ С‚РёРє (СЌРєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕРµ СЃРіР»Р°Р¶РёРІР°РЅРёРµ)
+    private static final float FADE_SPEED = 0.12f;
+
+    private static boolean active = false;
+    // Р§С‚РѕР±С‹ РЅРµ СЃРїР°РјРёС‚СЊ Р»РѕРі РѕРґРЅРѕР№ Рё С‚РѕР№ Р¶Рµ РѕС€РёР±РєРѕР№ РєР°Р¶РґС‹Р№ С‚РёРє, РµСЃР»Рё С‡С‚Рѕ-С‚Рѕ РІСЃС‘ Р¶Рµ СЃР»РѕРјР°РЅРѕ
+    private static boolean loadFailedLastAttempt = false;
+
+    // РўРµРєСѓС‰Р°СЏ "РѕС‚РѕР±СЂР°Р¶Р°РµРјР°СЏ" РёРЅС‚РµРЅСЃРёРІРЅРѕСЃС‚СЊ С‡/Р± СЌС„С„РµРєС‚Р° (0..1), РїР»Р°РІРЅРѕ РµРґРµС‚ Рє 0 РїСЂРё РІС‹РєР»СЋС‡РµРЅРёРё
+    private static float currentIntensity = 0f;
+
+    // Р РµС„Р»РµРєСЃРёСЏ: РµСЃР»Рё РѕРґРёРЅ СЂР°Р· РЅРµ СЃСЂР°Р±РѕС‚Р°Р»Р° - Р±РѕР»СЊС€Рµ РЅРµ РїС‹С‚Р°РµРјСЃСЏ, СЂР°Р±РѕС‚Р°РµРј РєР°Рє СЂР°РЅСЊС€Рµ
+    private static boolean reflectionBroken = false;
+    private static Field postEffectField = null;
+    private static Field passesField = null;
+
+    // РќР°Р№РґРµРЅРЅС‹Р№ uniform С‚РµРєСѓС‰РµРіРѕ Р°РєС‚РёРІРЅРѕРіРѕ СЌС„С„РµРєС‚Р°, СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РїСЂРё РєР°Р¶РґРѕР№ РЅРѕРІРѕР№ Р°РєС‚РёРІР°С†РёРё
+    private static Uniform cachedUniform = null;
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        Minecraft mc = Minecraft.getInstance();
+
+        if (mc.player == null || mc.level == null) {
+            if (active) {
+                mc.gameRenderer.shutdownEffect();
+                active = false;
+                currentIntensity = 0f;
+                cachedUniform = null;
+            }
+            return;
+        }
+
+        float flash = ClientSuppressionHandler.getFlash();
+        boolean shouldBeOn = flash >= ACTIVATE_THRESHOLD;
+
+        // --- Р’РєР»СЋС‡РµРЅРёРµ СЌС„С„РµРєС‚Р° (СЂРµР·РєРѕ, Р±РµР· С„РµР№Рґ-РёРЅР°) ---
+        if (shouldBeOn && !active) {
+            if (loadFailedLastAttempt) {
+                return; // СѓР¶Рµ РїС‹С‚Р°Р»РёСЃСЊ Рё СѓРїР°Р»Рё РІ СЌС‚РѕРј "Р·Р°С…РѕРґРµ" flash - РЅРµ РґРѕР»Р±РёРј loadEffect РєР°Р¶РґС‹Р№ С‚РёРє
+            }
+            try {
+                mc.gameRenderer.loadEffect(GRAYSCALE_EFFECT);
+                active = true;
+                currentIntensity = 1f;
+                cachedUniform = null; // РЅРѕРІС‹Р№ PostChain - СЃС‚Р°СЂС‹Р№ Uniform Р±РѕР»СЊС€Рµ РЅРµ РІР°Р»РёРґРµРЅ
+                if (!reflectionBroken) {
+                    trySetUniform(mc, 1f);
+                }
+            } catch (Exception e) {
+                loadFailedLastAttempt = true;
+                LOGGER.error("Failed to load grayscale post effect '{}': {}",
+                        GRAYSCALE_EFFECT, e.getMessage());
+            }
+            return;
+        }
+
+        if (shouldBeOn) {
+            loadFailedLastAttempt = false;
+        }
+
+        // --- РџР»Р°РІРЅС‹Р№ С„РµР№Рґ-Р°СѓС‚, РєРѕРіРґР° flash РѕРїСѓСЃС‚РёР»СЃСЏ РЅРёР¶Рµ РїРѕСЂРѕРіР° ---
+        if (!shouldBeOn && active) {
+            if (reflectionBroken) {
+                // Р¤РѕР»Р±СЌРє РЅР° СЃС‚Р°СЂРѕРµ РїРѕРІРµРґРµРЅРёРµ: РјРіРЅРѕРІРµРЅРЅРѕРµ РІС‹РєР»СЋС‡РµРЅРёРµ
+                mc.gameRenderer.shutdownEffect();
+                active = false;
+                currentIntensity = 0f;
+                cachedUniform = null;
+                loadFailedLastAttempt = false;
+                return;
+            }
+
+            currentIntensity += (0f - currentIntensity) * FADE_SPEED;
+            boolean uniformOk = trySetUniform(mc, currentIntensity);
+
+            if (!uniformOk) {
+                // Р РµС„Р»РµРєСЃРёСЏ СЃР»РѕРјР°Р»Р°СЃСЊ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ - РѕС‚РєР°С‚С‹РІР°РµРјСЃСЏ, РІС‹РєР»СЋС‡Р°РµРј СЂРµР·РєРѕ Рё Р±РѕР»СЊС€Рµ РЅРµ РїС‹С‚Р°РµРјСЃСЏ
+                reflectionBroken = true;
+                mc.gameRenderer.shutdownEffect();
+                active = false;
+                currentIntensity = 0f;
+                cachedUniform = null;
+                loadFailedLastAttempt = false;
+                return;
+            }
+
+            if (currentIntensity < 0.02f) {
+                mc.gameRenderer.shutdownEffect();
+                active = false;
+                currentIntensity = 0f;
+                cachedUniform = null;
+            }
+
+            loadFailedLastAttempt = false;
+        }
+    }
+
+    /**
+     * РџС‹С‚Р°РµС‚СЃСЏ РІС‹СЃС‚Р°РІРёС‚СЊ uniform "Intensity" Сѓ Р°РєС‚РёРІРЅРѕРіРѕ РїРѕСЃС‚-СЌС„С„РµРєС‚Р°.
+     * Р’РѕР·РІСЂР°С‰Р°РµС‚ false, РµСЃР»Рё С‡С‚Рѕ-С‚Рѕ РїРѕС€Р»Рѕ РЅРµ С‚Р°Рє - РІ СЌС‚РѕРј СЃР»СѓС‡Р°Рµ РІС‹Р·С‹РІР°СЋС‰РёР№ РєРѕРґ РґРѕР»Р¶РµРЅ
+     * СЃС‡РёС‚Р°С‚СЊ СЂРµС„Р»РµРєСЃРёСЋ СЃР»РѕРјР°РЅРЅРѕР№ Рё Р±РѕР»СЊС€Рµ РЅР° РЅРµС‘ РЅРµ РїРѕР»Р°РіР°С‚СЊСЃСЏ.
+     */
+    private static boolean trySetUniform(Minecraft mc, float value) {
+        try {
+            if (cachedUniform == null) {
+                if (postEffectField == null) {
+                    postEffectField = ObfuscationReflectionHelper.findField(GameRenderer.class, "postEffect");
+                    postEffectField.setAccessible(true);
+                }
+
+                Object effectObj = postEffectField.get(mc.gameRenderer);
+                if (!(effectObj instanceof PostChain postChain)) {
+                    return false;
+                }
+
+                if (passesField == null) {
+                    passesField = ObfuscationReflectionHelper.findField(PostChain.class, "passes");
+                    passesField.setAccessible(true);
+                }
+
+                Object passesObj = passesField.get(postChain);
+                if (!(passesObj instanceof List<?> passes)) {
+                    return false;
+                }
+
+                for (Object passObj : passes) {
+                    if (!(passObj instanceof PostPass pass)) continue;
+                    EffectInstance effect = pass.getEffect();
+                    if (effect == null) continue;
+                    Uniform uniform = effect.getUniform("Intensity");
+                    if (uniform != null) {
+                        cachedUniform = uniform;
+                        break;
+                    }
+                }
+
+                if (cachedUniform == null) {
+                    return false;
+                }
+            }
+
+            cachedUniform.set(value);
+            return true;
+        } catch (Exception e) {
+            LOGGER.warn("Smooth grayscale fade unavailable, falling back to instant toggle: {}", e.getMessage());
+            return false;
+        }
+    }
+}
+==========================================
+FILE: ClientSuppressionHandler.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\client\ClientSuppressionHandler.java
+==========================================
+package com.asuppression.mod.client;
+
+import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.client.event.ViewportEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.slf4j.Logger;
+
+import java.util.List;
+import java.util.WeakHashMap;
+
+/**
+ * РљР»РёРµРЅС‚СЃРєР°СЏ Р»РѕРіРёРєР° РїРѕРґР°РІР»РµРЅРёСЏ (suppression) Рё РєРѕРЅС‚СѓР·РёРё РѕС‚ РІР·СЂС‹РІР° (flash).
+ *
+ * РџРѕРґР°РІР»РµРЅРёРµ СЂР°СЃС‚С‘С‚ РѕС‚:
+ *  - "Р±Р»РёР·РєРѕРіРѕ РїСЂРѕР»С‘С‚Р° РїСѓР»Рё" (Р»СЋР±Р°СЏ СЃСѓС‰РЅРѕСЃС‚СЊ, РєРѕС‚РѕСЂР°СЏ Р»РµС‚РёС‚ СЂСЏРґРѕРј РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ Р±С‹СЃС‚СЂРѕ - СЃС‚СЂРµР»Р°,
+ *    СЃРЅРµР¶РѕРє, С‚СЂРµР·СѓР±РµС†, РѕРіРЅРµРЅРЅС‹Р№ С€Р°СЂ Рё С‚.Рґ.) -> СЃРёР»Р° Р·Р°РІРёСЃРёС‚ РѕС‚ РґРёСЃС‚Р°РЅС†РёРё РїРѕ РєСЂРёРІРѕР№ РЅРёР¶Рµ
+ *  - РїСЂСЏРјРѕРіРѕ РїРѕРїР°РґР°РЅРёСЏ -> РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЂРµР·РєРёР№ СЃРєР°С‡РѕРє (СЃРј. SuppressionHitPacket, С‚РѕР¶Рµ 1.0)
+ *
+ * РљРѕРЅС‚СѓР·РёСЏ (flash) СЂР°СЃС‚С‘С‚ РѕС‚ Р±Р»РёР·РєРѕРіРѕ РІР·СЂС‹РІР° (СЃРј. ExplosionFlashPacket) Рё С‚СѓСЃРєРЅРёС‚/РѕР±РµСЃС†РІРµС‡РёРІР°РµС‚ СЌРєСЂР°РЅ.
+ */
+public class ClientSuppressionHandler {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    // ---------------------- SUPPRESSION (С‚СЂСЏСЃРєР° + РІРёРЅСЊРµС‚РєР°) ----------------------
+
+    private static float suppression = 0f;
+    private static final float DECAY_PER_TICK = 0.965f;
+
+    // Р Р°РґРёСѓСЃ РїРѕРёСЃРєР° "РїСѓР»СЊ" РІРѕРєСЂСѓРі РёРіСЂРѕРєР°. Р Р°РЅСЊС€Рµ Р±С‹Р» РІСЃРµРіРѕ 2 Р±Р»РѕРєР° - РёР·-Р·Р° СЌС‚РѕРіРѕ Р±С‹СЃС‚СЂС‹Рµ СЃРЅР°СЂСЏРґС‹
+    // (СЃС‚СЂРµР»Р° Р»РµС‚РёС‚ ~2-3 Р±Р»РѕРєР°/С‚РёРє) С‡Р°СЃС‚Рѕ РІРѕРѕР±С‰Рµ РїСЂРѕСЃРєР°РєРёРІР°Р»Рё РјРёРјРѕ РїСЂРѕРІРµСЂРєРё: СЃСѓС‰РЅРѕСЃС‚СЊ РїСЂРѕСЃС‚Рѕ РЅРµ
+    // РѕРєР°Р·С‹РІР°Р»Р°СЃСЊ РІРЅСѓС‚СЂРё РјР°Р»РµРЅСЊРєРѕР№ Р·РѕРЅС‹ РІ РјРѕРјРµРЅС‚ СЃСЌРјРїР»РёСЂРѕРІР°РЅРёСЏ РїРѕР·РёС†РёРё (РєРѕРЅРµС† С‚РёРєР°), РѕСЃРѕР±РµРЅРЅРѕ РµСЃР»Рё
+    // РїСЂРѕР»РµС‚Р°Р»Р° РјРёРјРѕ РїРѕ РєР°СЃР°С‚РµР»СЊРЅРѕР№. Р Р°СЃС€РёСЂРёР»Рё Р·РѕРЅСѓ РґРѕ 10 Р±Р»РѕРєРѕРІ - РїСЂРё С‚Р°РєРѕР№ СЃРєРѕСЂРѕСЃС‚Рё СЃРЅР°СЂСЏРґ
+    // РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅРѕ РїСЂРѕР±СѓРґРµС‚ РІРЅСѓС‚СЂРё Р·РѕРЅС‹ С…РѕС‚СЏ Р±С‹ 1-2 С‚РёРєР°, Р° РїРѕ РєСЂРёРІРѕР№ Р·Р°С‚СѓС…Р°РЅРёСЏ РЅРёР¶Рµ РЅР° 10 Р±Р»РѕРєР°С…
+    // СЌС„С„РµРєС‚ Рё С‚Р°Рє СѓР¶Рµ РѕРєРѕР»Рѕ РЅСѓР»СЏ, С‚Р°Рє С‡С‚Рѕ Р±РѕР»СЊС€РѕР№ СЂР°РґРёСѓСЃ РЅРµ РґР°С‘С‚ РїРѕРґР°РІР»РµРЅРёСЋ СЂР°СЃС‚Рё "РѕС‚ РІСЃРµРіРѕ РІРѕРєСЂСѓРі".
+    private static final double NEAR_MISS_RADIUS = 10.0;
+
+    // РљСЂРёРІР°СЏ РёРЅС‚РµРЅСЃРёРІРЅРѕСЃС‚Рё РѕС‚ РґРёСЃС‚Р°РЅС†РёРё: f(d) = exp(-K * d^P).
+    // РџРѕРґРѕР±СЂР°РЅР° РїРѕРґ 3 РєРѕРЅС‚СЂРѕР»СЊРЅС‹Рµ С‚РѕС‡РєРё:
+    //  f(0)   = 1.0  (РїСЂСЏРјРѕРµ РїРѕРїР°РґР°РЅРёРµ - СЃРѕРІРїР°РґР°РµС‚ СЃ DIRECT_HIT_INTENSITY РЅР° СЃРµСЂРІРµСЂРµ)
+    //  f(0.5) = 0.9  (РїСЂРѕР»С‘С‚ РІ РїРѕР»Р±Р»РѕРєР° РѕС‚ РёРіСЂРѕРєР°)
+    //  f(3.0) = 0.4  (РїСЂРѕР»С‘С‚ РІ 3 Р±Р»РѕРєР° РѕС‚ РёРіСЂРѕРєР°)
+    // Рљ 10 Р±Р»РѕРєР°Рј f(d) СѓР¶Рµ < 0.02, РґР°Р»СЊС€Рµ СЌС„С„РµРєС‚ РїСЂР°РєС‚РёС‡РµСЃРєРё РЅРµ РѕС‰СѓС‰Р°РµС‚СЃСЏ.
+    private static final float DIST_CURVE_K = 0.2433f;
+    private static final float DIST_CURVE_P = 1.2074f;
+
+    // РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃРєРѕСЂРѕСЃС‚СЊ СЃСѓС‰РЅРѕСЃС‚Рё (Р±Р»РѕРєРѕРІ/С‚РёРє), С‡С‚РѕР±С‹ СЃС‡РёС‚Р°С‚СЊ РµС‘ "РїСѓР»РµР№", Р° РЅРµ РїСЂРѕСЃС‚Рѕ РёРґСѓС‰РёРј РјРѕР±РѕРј.
+    // РЎС‚СЂРµР»Р° РІ РїРѕР»С‘С‚Рµ ~1.5-3.0, СЃРЅРµР¶РѕРє/С‚СЂРµР·СѓР±РµС† ~0.8-1.5, Р±РµРіСѓС‰РёР№ РёРіСЂРѕРє/Р»РѕС€Р°РґСЊ ~0.2-0.4.
+    private static final double FAST_ENTITY_SPEED_THRESHOLD = 0.5;
+
+    // РљРѕСЂРѕС‚РєРёР№ РєСѓР»РґР°СѓРЅ РЅР° СЃСѓС‰РЅРѕСЃС‚СЊ, С‡С‚РѕР±С‹ РЅРµ РїРµСЂРµСЃС‡РёС‚С‹РІР°С‚СЊ РѕРґРЅРѕ Рё С‚Рѕ Р¶Рµ РєР°Р¶РґС‹Р№ С‚РёРє Р±РµР· РѕСЃС‚Р°РЅРѕРІРєРё -
+    // РЅР° СЂРµР·СѓР»СЊС‚Р°С‚ РЅРµ РІР»РёСЏРµС‚ (spikeSuppression РІСЃС‘ СЂР°РІРЅРѕ Р±РµСЂС‘С‚ РјР°РєСЃРёРјСѓРј), С‚РѕР»СЊРєРѕ СЌРєРѕРЅРѕРјРёС‚ CPU.
+    private static final int RECHECK_COOLDOWN_TICKS = 2;
+    private static final WeakHashMap<Entity, Integer> recentlyCounted = new WeakHashMap<>();
+
+    // ---------------------- EXPLOSION FLASH (С‚СѓСЃРєР»РѕСЃС‚СЊ + РѕР±РµСЃС†РІРµС‡РёРІР°РЅРёРµ) ----------------------
+
+    private static float flash = 0f;
+    // РљРѕРЅС‚СѓР·РёСЏ СѓРіР°СЃР°РµС‚ РјРµРґР»РµРЅРЅРµРµ, С‡РµРј РѕР±С‹С‡РЅРѕРµ РїРѕРґР°РІР»РµРЅРёРµ/С‚СЂСЏСЃРєР° - РІР·СЂС‹РІ "РѕРіР»СѓС€Р°РµС‚" РїРѕРґРѕР»СЊС€Рµ.
+    // РџСЂРё 0.9833 СѓРіР°СЃР°РЅРёРµ СЃ 1.0 РґРѕ ~0 Р·Р°РЅРёРјР°РµС‚ ~20.5 СЃРµРєСѓРЅРґС‹ (РІ 1.5 СЂР°Р·Р° РґРѕР»СЊС€Рµ, С‡РµРј СЂР°РЅСЊС€Рµ Р±С‹Р»Рѕ
+    // СЃ 0.975, С‡С‚Рѕ РґР°РІР°Р»Рѕ ~14 СЃРµРєСѓРЅРґ).
+    private static final float FLASH_DECAY_PER_TICK = 0.9833f;
+
+    public static float getSuppression() {
+        return suppression;
+    }
+
+    public static float getFlash() {
+        return flash;
+    }
+
+    public static void addSuppression(float amount) {
+        if (isPlayerRiding()) return;
+        suppression = Math.min(1.0f, suppression + amount);
+    }
+
+    /** Р–С‘СЃС‚РєРѕ РІС‹СЃС‚Р°РІРёС‚СЊ Р·РЅР°С‡РµРЅРёРµ, РµСЃР»Рё РѕРЅРѕ Р±РѕР»СЊС€Рµ С‚РµРєСѓС‰РµРіРѕ (РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РїСЂРё РїСЂСЏРјРѕРј РїРѕРїР°РґР°РЅРёРё Р РїСЂРё Р±Р»РёР·РєРѕРј РїСЂРѕР»С‘С‚Рµ) */
+    public static void spikeSuppression(float amount) {
+        if (isPlayerRiding()) return;
+        suppression = Math.max(suppression, Math.min(1.0f, amount));
+    }
+
+    /** Р–С‘СЃС‚РєРѕ РІС‹СЃС‚Р°РІРёС‚СЊ СѓСЂРѕРІРµРЅСЊ РєРѕРЅС‚СѓР·РёРё РѕС‚ РІР·СЂС‹РІР°, РµСЃР»Рё РѕРЅ Р±РѕР»СЊС€Рµ С‚РµРєСѓС‰РµРіРѕ */
+    public static void spikeFlash(float amount) {
+        if (isPlayerRiding()) return;
+        flash = Math.max(flash, Math.min(1.0f, amount));
+    }
+
+    /**
+     * true, РµСЃР»Рё РёРіСЂРѕРє СЃРµР№С‡Р°СЃ РµРґРµС‚/СЃРёРґРёС‚ РІ РєР°РєРѕР№-Р»РёР±Рѕ СЃСѓС‰РЅРѕСЃС‚Рё (Р»РѕРґРєР°, РєРѕРЅСЊ, РјРёРЅРµРєР°СЂС‚ Рё С‚.Рґ.).
+     * РџРѕРєР° СЌС‚Рѕ С‚Р°Рє, РїРѕРґР°РІР»РµРЅРёРµ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРёРјРµРЅСЏС‚СЊСЃСЏ РЅРё РІ РєР°РєРѕРј РІРёРґРµ - РЅРё РѕС‚ Р±Р»РёР·РєРѕРіРѕ РїСЂРѕР»С‘С‚Р° РїСѓР»Рё,
+     * РЅРё РѕС‚ РїСЂСЏРјРѕРіРѕ РїРѕРїР°РґР°РЅРёСЏ (SuppressionHitPacket), РЅРё РѕС‚ РєРѕРЅС‚СѓР·РёРё РІР·СЂС‹РІР° (ExplosionFlashPacket) -
+     * РїРѕСЌС‚РѕРјСѓ РїСЂРѕРІРµСЂРєР° СЃС‚РѕРёС‚ РїСЂСЏРјРѕ РІ С‚РѕС‡РєР°С… РІС…РѕРґР° (addSuppression/spikeSuppression/spikeFlash),
+     * Р° РЅРµ С‚РѕР»СЊРєРѕ РІ С†РёРєР»Рµ РїРѕРёСЃРєР° Р±Р»РёР¶РЅРёС… СЃСѓС‰РЅРѕСЃС‚РµР№.
+     */
+    private static boolean isPlayerRiding() {
+        Player player = Minecraft.getInstance().player;
+        return player != null && player.isPassenger();
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
+
+        // Р—Р°С‚СѓС…Р°РЅРёРµ
+        suppression *= DECAY_PER_TICK;
+        if (suppression < 0.001f) suppression = 0f;
+
+        flash *= FLASH_DECAY_PER_TICK;
+        if (flash < 0.001f) flash = 0f;
+
+        Player player = mc.player;
+        if (player.isPassenger()) return; // РїРѕРєР° РµРґРµС‚/СЃРёРґРёС‚ РІ СЃСѓС‰РЅРѕСЃС‚Рё - РїРѕРґР°РІР»РµРЅРёРµ РЅРµ РїСЂРёРјРµРЅСЏРµС‚СЃСЏ РІРѕРѕР±С‰Рµ
+
+        // РС‰РµРј Р›Р®Р‘Р«Р• Р±С‹СЃС‚СЂРѕ Р»РµС‚СЏС‰РёРµ СЃСѓС‰РЅРѕСЃС‚Рё СЂСЏРґРѕРј СЃ РёРіСЂРѕРєРѕРј - СЌС‚Рѕ Рё РµСЃС‚СЊ "РїСѓР»Рё" РІ СЌС‚РѕРј РјРѕРґРµ
+        AABB searchArea = player.getBoundingBox().inflate(NEAR_MISS_RADIUS);
+        Entity playerVehicle = player.getVehicle();
+
+        // --- Р’Р Р•РњР•РќРќР«Р™ DEBUG: РїРѕРєР°Р·С‹РІР°РµС‚ РІРѕРѕР±С‰Рµ Р’РЎР• СЃСѓС‰РЅРѕСЃС‚Рё СЂСЏРґРѕРј (Р±РµР· С„РёР»СЊС‚СЂР° РїРѕ СЃРєРѕСЂРѕСЃС‚Рё),
+        // С‡С‚РѕР±С‹ РїРѕРЅСЏС‚СЊ - РІРёРґРёС‚ Р»Рё РґРµС‚РµРєС‚ РїСѓР»СЋ РѕСЂСѓР¶РµР№РЅРѕРіРѕ РјРѕРґР° РІРѕРѕР±С‰Рµ Рё РєР°РєР°СЏ Сѓ РЅРµС‘ СЃРєРѕСЂРѕСЃС‚СЊ.
+        // РЈРґР°Р»Рё СЌС‚РѕС‚ Р±Р»РѕРє РїРѕСЃР»Рµ РґРёР°РіРЅРѕСЃС‚РёРєРё.
+        for (Entity dbg : mc.level.getEntities(player, searchArea, e -> e != player)) {
+            LOGGER.info("[AsSuppression DEBUG] {} speed={}", dbg.getClass().getSimpleName(), dbg.getDeltaMovement().length());
+        }
+        // --- РєРѕРЅРµС† debug-Р±Р»РѕРєР° ---
+
+        // РСЃРєР»СЋС‡РµРЅС‹:
+        //  - СЃСѓС‰РЅРѕСЃС‚Рё-РёРіСЂРѕРєРё (СЃРј. РїСЂРµРґС‹РґСѓС‰СѓСЋ РїСЂР°РІРєСѓ);
+        //  - СЃРЅР°СЂСЏРґС‹, РІС‹РїСѓС‰РµРЅРЅС‹Рµ СЃР°РјРёРј РёРіСЂРѕРєРѕРј (РїСЂРѕРІРµСЂСЏРµРј РІР»Р°РґРµР»СЊС†Р° Projectile - РёРЅР°С‡Рµ СЃРІРѕРё Р¶Рµ
+        //    РїСѓР»Рё/СЃС‚СЂРµР»С‹ С‚СЂРёРіРіРµСЂРёР»Рё Р±С‹ РїРѕРґР°РІР»РµРЅРёРµ РІ РјРѕРјРµРЅС‚ РІС‹СЃС‚СЂРµР»Р°, РїРѕРєР° Р»РµС‚СЏС‚ СЂСЏРґРѕРј СЃ С‚РѕР±РѕР№);
+        //  - СЃСѓС‰РЅРѕСЃС‚СЊ, РІ РєРѕС‚РѕСЂРѕР№ РёРіСЂРѕРє СЃРµР№С‡Р°СЃ РµРґРµС‚/СЃРёРґРёС‚ (Р»РѕРґРєР°, РєРѕРЅСЊ, РјРёРЅРµРєР°СЂС‚ Рё С‚.Рґ.) - РёРЅР°С‡Рµ
+        //    СЃР°РјРѕ РґРІРёР¶РµРЅРёРµ "С‚СЂР°РЅСЃРїРѕСЂС‚Р°" СЃС‡РёС‚Р°Р»РѕСЃСЊ Р±С‹ Р±Р»РёР·РєРёРј РїСЂРѕР»С‘С‚РѕРј РїСѓР»Рё.
+        List<Entity> nearby = mc.level.getEntities(player, searchArea,
+                e -> e != player && !(e instanceof Player) && e.isAlive()
+                        && e.getDeltaMovement().length() >= FAST_ENTITY_SPEED_THRESHOLD
+                        && !(e instanceof Projectile proj && proj.getOwner() == player)
+                        && e != playerVehicle);
+
+        recentlyCounted.entrySet().removeIf(e -> !e.getKey().isAlive());
+
+        for (Entity ent : nearby) {
+            Integer cooldown = recentlyCounted.get(ent);
+            if (cooldown != null && cooldown > 0) {
+                recentlyCounted.put(ent, cooldown - 1);
+                continue;
+            }
+
+            Vec3 entPos = ent.position();
+            double dist = entPos.distanceTo(player.position());
+            if (dist <= NEAR_MISS_RADIUS) {
+                float intensity = (float) Math.exp(-DIST_CURVE_K * Math.pow(dist, DIST_CURVE_P));
+                spikeSuppression(intensity);
+                recentlyCounted.put(ent, RECHECK_COOLDOWN_TICKS);
+            }
+        }
+    }
+
+    /**
+     * РўСЂСЏСЃРєР° (СѓРІРѕРґ) РєР°РјРµСЂС‹. РЎРіР»Р°Р¶РµРЅРЅС‹Р№ РїСЃРµРІРґРѕСЃР»СѓС‡Р°Р№РЅС‹Р№ С€СѓРј (hash-based value noise +
+     * smoothstep-РёРЅС‚РµСЂРїРѕР»СЏС†РёСЏ): РґРІРёР¶РµРЅРёРµ РїР»Р°РІРЅРѕРµ (Р±РµР· СЂС‹РІРєРѕРІ Рё РїРѕРїР°РїРёРЅРіР°), РЅРѕ РЅРµСЂРµРіСѓР»СЏСЂРЅРѕРµ,
+     * Р±РµР· РѕС‰СѓС‰РµРЅРёСЏ РєР°С‡РµР»РµР№.
+     *
+     * РђРјРїР»РёС‚СѓРґС‹ РїРѕРґРЅСЏС‚С‹: "РєСЂСѓРїРЅР°СЏ" РіР°СЂРјРѕРЅРёРєР° РєР°Р¶РґРѕР№ РѕСЃРё x1.2, "РјРµР»РєР°СЏ" x2.5 - С‚Р°Рє РјРµР»РєР°СЏ РґСЂРѕР¶СЊ
+     * СЃС‚Р°Р»Р° Р·Р°РјРµС‚РЅРµРµ, Р° РЅРµ С‚РµСЂСЏР»Р°СЃСЊ РЅР° С„РѕРЅРµ РєСЂСѓРїРЅРѕР№.
+     */
+    @SubscribeEvent
+    public void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        float supp = getSuppression();
+        float fl = getFlash();
+        if (supp <= 0.001f && fl <= 0.001f) return;
+
+        long t = System.currentTimeMillis();
+
+        // Р Р°Р·РЅС‹Рµ РїРµСЂРёРѕРґС‹ Рё "СЃРёРґС‹" РЅР° РєР°Р¶РґСѓСЋ РѕСЃСЊ/РіР°СЂРјРѕРЅРёРєСѓ - С‡С‚РѕР±С‹ РґРІРёР¶РµРЅРёРµ РЅРµ РІС‹РіР»СЏРґРµР»Рѕ
+        // СЃРёРЅС…СЂРѕРЅРЅС‹Рј Рё РїСЂРµРґСЃРєР°Р·СѓРµРјС‹Рј (РєР°Рє Р±С‹Р»Рѕ Р±С‹ СЃ РѕРґРёРЅР°РєРѕРІС‹РјРё РїРѕ С„Р°Р·Рµ СЃРёРЅСѓСЃРѕРёРґР°РјРё)
+        double yawShake = smoothNoise(t, 90, 1) * 6.0 + smoothNoise(t, 47, 2) * 5.5;   // Р±С‹Р»Рѕ 5.0 Рё 2.2
+        double pitchShake = smoothNoise(t, 110, 3) * 3.84 + smoothNoise(t, 61, 4) * 3.5; // Р±С‹Р»Рѕ 3.2 Рё 1.4
+        double rollShake = smoothNoise(t, 130, 5) * 1.92; // Р±С‹Р»Рѕ 1.6
+
+        float suppIntensity = supp * supp; // РєРІР°РґСЂР°С‚РёС‡РЅР°СЏ РєСЂРёРІР°СЏ - СЃР»Р°Р±РѕРµ РїРѕРґР°РІР»РµРЅРёРµ РїРѕС‡С‚Рё РЅРµ С‚СЂСЏСЃС‘С‚, СЃРёР»СЊРЅРѕРµ - РѕС‰СѓС‚РёРјРѕ
+        double flashSway = smoothNoise(t, 400, 6) * 2.0 * fl; // РѕС‚ РєРѕРЅС‚СѓР·РёРё - РјРµРґР»РµРЅРЅС‹Р№ "РїР»С‹РІСѓС‰РёР№" РєСЂРµРЅ
+
+        event.setYaw((float) (event.getYaw() + yawShake * suppIntensity));
+        event.setPitch((float) (event.getPitch() + pitchShake * suppIntensity));
+        event.setRoll((float) (event.getRoll() + rollShake * suppIntensity + flashSway));
+    }
+
+    /** РҐСЌС€-С€СѓРј: РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅРѕРµ РїСЃРµРІРґРѕСЃР»СѓС‡Р°Р№РЅРѕРµ С‡РёСЃР»Рѕ РІ [-1, 1] РґР»СЏ С†РµР»РѕРіРѕ РёРЅРґРµРєСЃР°. */
+    private static float hash(long index, long seed) {
+        long x = index * 0x9E3779B97F4A7C15L + seed * 0xBF58476D1CE4E5B9L;
+        x = (x ^ (x >>> 33)) * 0xFF51AFD7ED558CCDL;
+        x = (x ^ (x >>> 33)) * 0xC4CEB9FE1A85EC53L;
+        x = x ^ (x >>> 33);
+        return ((x & 0xFFFFFF) / (float) 0xFFFFFF) * 2f - 1f;
+    }
+
+    /**
+     * РџР»Р°РІРЅС‹Р№ РїСЃРµРІРґРѕСЃР»СѓС‡Р°Р№РЅС‹Р№ С€СѓРј РІРѕ РІСЂРµРјРµРЅРё: Р·РЅР°С‡РµРЅРёРµ РјРµРЅСЏРµС‚СЃСЏ РєР°Р¶РґС‹Рµ {@code periodMs} РјСЃ,
+     * Р° РјРµР¶РґСѓ "РѕРїРѕСЂРЅС‹РјРё С‚РѕС‡РєР°РјРё" РёРЅС‚РµСЂРїРѕР»РёСЂСѓРµС‚СЃСЏ smoothstep'РѕРј (Р±РµР· РѕС‰СѓС‰РµРЅРёСЏ СЃРёРЅСѓСЃРѕРёРґС‹/РїСЂСѓР¶РёРЅС‹).
+     */
+    private static float smoothNoise(long timeMs, long periodMs, long seed) {
+        long index = timeMs / periodMs;
+        float frac = (timeMs % periodMs) / (float) periodMs;
+        float a = hash(index, seed);
+        float b = hash(index + 1, seed);
+        float t = frac * frac * (3f - 2f * frac); // smoothstep
+        return a + (b - a) * t;
+    }
+}
+==========================================
+FILE: SuppressionOverlay.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\client\SuppressionOverlay.java
+==========================================
+package com.asuppression.mod.client;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
+import net.minecraftforge.client.gui.overlay.IGuiOverlay;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.api.distmarker.Dist;
+import com.asuppression.mod.AsSuppressionMod;
+
+/**
+ * Р—Р°С‚РµРјРЅРµРЅРёРµ РїРѕ РєСЂР°СЏРј СЌРєСЂР°РЅР° (РІРёРЅСЊРµС‚РєР°), СѓСЃРёР»РёРІР°СЋС‰РµРµСЃСЏ РІРјРµСЃС‚Рµ СЃ СѓСЂРѕРІРЅРµРј РїРѕРґР°РІР»РµРЅРёСЏ.
+ *
+ * Р’РђР–РќРћ: РІРµСЂС…/РЅРёР· СЂРёСЃСѓРµРј С‡РµСЂРµР· С€С‚Р°С‚РЅС‹Р№ GuiGraphics#fillGradient (РѕРЅ СѓРјРµРµС‚ С‚РѕР»СЊРєРѕ
+ * РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ "РёР· РєРѕСЂРѕР±РєРё" - СЌС‚Рѕ РѕРє РґР»СЏ РІРµСЂС…Р°/РЅРёР·Р°).
+ *
+ * Р”Р»СЏ Р»РµРІРѕ/РїСЂР°РІРѕ СЂР°РЅСЊС€Рµ Р±С‹Р» РѕС‚РґРµР»СЊРЅС‹Р№ "СЃС‹СЂРѕР№" draw call С‡РµСЂРµР· Tesselator.getInstance() -
+ * С‚РѕС‚ Р¶Рµ СЃР°РјС‹Р№ Tesselator, РєРѕС‚РѕСЂС‹Рј РїРѕР»СЊР·СѓРµС‚СЃСЏ СЃР°Рј GuiGraphics РґР»СЏ Р±СѓС„РµСЂРёР·Р°С†РёРё РЎР’РћРРҐ
+ * РІС‹Р·РѕРІРѕРІ fillGradient/fill. РЎРјРµС€РёРІР°РЅРёРµ immediate-mode РѕС‚СЂРёСЃРѕРІРєРё СЃ Р±СѓС„РµСЂРёР·РѕРІР°РЅРЅРѕР№
+ * РѕС‚СЂРёСЃРѕРІРєРѕР№ GuiGraphics РІ РѕРґРЅРѕРј РєР°РґСЂРµ РЅРµРЅР°РґС‘Р¶РЅРѕ (РїРѕСЂСЏРґРѕРє flush'Р° РЅРµ РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅ) -
+ * РІРёР·СѓР°Р»СЊРЅРѕ СЌС‚Рѕ РґР°РІР°Р»Рѕ РЅРµ РїР»Р°РІРЅС‹Р№ РіСЂР°РґРёРµРЅС‚, Р° СЃРїР»РѕС€РЅРѕР№ С‡С‘СЂРЅС‹Р№ Р±Р»РѕРє. РџРѕСЌС‚РѕРјСѓ Р»РµРІРѕ/РїСЂР°РІРѕ
+ * С‚РѕР¶Рµ СЂРёСЃСѓРµРј С‡РµСЂРµР· graphics.fill() СЃС‚СѓРїРµРЅСЊРєР°РјРё (С‚РѕРЅРєРёРјРё РІРµСЂС‚РёРєР°Р»СЊРЅС‹РјРё РїРѕР»РѕСЃРєР°РјРё СЃ
+ * Р»РёРЅРµР№РЅРѕ РјРµРЅСЏСЋС‰РёРјСЃСЏ alpha) - С‚РѕС‚ Р¶Рµ СЃР°РјС‹Р№ РїСЂРѕРІРµСЂРµРЅРЅРѕ СЂР°Р±РѕС‡РёР№ РїСѓС‚СЊ, С‡С‚Рѕ Рё РІРµСЂС…/РЅРёР·.
+ */
+@Mod.EventBusSubscriber(modid = AsSuppressionMod.MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+public class SuppressionOverlay {
+
+    public static final IGuiOverlay HUD = SuppressionOverlay::render;
+
+    // РљРѕР»РёС‡РµСЃС‚РІРѕ РїРѕР»РѕСЃРѕРє РґР»СЏ Р°РїРїСЂРѕРєСЃРёРјР°С†РёРё РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРіРѕ РіСЂР°РґРёРµРЅС‚Р° - 64 Р±РѕР»РµРµ С‡РµРј РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ
+    // РґР»СЏ РіР»Р°РґРєРѕР№ РєР°СЂС‚РёРЅРєРё Рё РґС‘С€РµРІРѕ РїРѕ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚Рё (СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ 64 РѕР±С‹С‡РЅС‹С… fill()).
+    private static final int GRADIENT_STEPS = 64;
+
+    @SubscribeEvent
+    public static void register(RegisterGuiOverlaysEvent event) {
+        event.registerAboveAll("suppression_vignette", HUD);
+    }
+
+    private static void render(net.minecraftforge.client.gui.overlay.ForgeGui gui, GuiGraphics graphics,
+                                float partialTick, int width, int height) {
+        float supp = ClientSuppressionHandler.getSuppression();
+        float flash = ClientSuppressionHandler.getFlash();
+        if (supp <= 0.001f && flash <= 0.001f) return;
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+
+        if (supp > 0.001f) {
+            int maxAlpha = (int) (supp * 200);
+            int edge = (int) (Math.max(width, height) * (0.20f + supp * 0.18f));
+
+            int black = 0x000000;
+            int transparent = withAlpha(black, 0);
+            int opaque = withAlpha(black, maxAlpha);
+
+            // Р’РµСЂС… / РЅРёР· - РІСЃС‚СЂРѕРµРЅРЅС‹Р№ vertical-gradient СЂР°Р±РѕС‚Р°РµС‚ РїСЂР°РІРёР»СЊРЅРѕ "РёР· РєРѕСЂРѕР±РєРё"
+            graphics.fillGradient(0, 0, width, edge, opaque, transparent);
+            graphics.fillGradient(0, height - edge, width, height, transparent, opaque);
+
+            // Р›РµРІРѕ / РїСЂР°РІРѕ - СЃС‚СѓРїРµРЅС‡Р°С‚Р°СЏ Р°РїРїСЂРѕРєСЃРёРјР°С†РёСЏ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРіРѕ РіСЂР°РґРёРµРЅС‚Р° С‡РµСЂРµР· fill()
+            fillHorizontalGradientStepped(graphics, 0, 0, edge, height, opaque, transparent);
+            fillHorizontalGradientStepped(graphics, width - edge, 0, width, height, transparent, opaque);
+
+            if (supp > 0.6f) {
+                int redAlpha = (int) ((supp - 0.6f) / 0.4f * 90);
+                int red = 0x400000;
+                graphics.fill(0, 0, width, height, withAlpha(red, redAlpha));
+            }
+        }
+
+        if (flash > 0.001f) {
+            int dimAlpha = (int) (flash * 150);
+            graphics.fill(0, 0, width, height, withAlpha(0x000000, dimAlpha));
+        }
+
+        RenderSystem.disableBlend();
+    }
+
+    /**
+     * РђРїРїСЂРѕРєСЃРёРјРёСЂСѓРµС‚ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ colorLeft -> colorRight РїРѕР»РѕСЃРєР°РјРё С‡РµСЂРµР·
+     * РѕР±С‹С‡РЅС‹Р№ graphics.fill() - С‚РѕС‚ Р¶Рµ СЃР°РјС‹Р№ РјРµС‚РѕРґ, РєРѕС‚РѕСЂС‹Рј GuiGraphics СЂРёСЃСѓРµС‚ РІСЃС‘
+     * РѕСЃС‚Р°Р»СЊРЅРѕРµ РІ СЌС‚РѕРј РѕРІРµСЂР»РµРµ, РїРѕСЌС‚РѕРјСѓ РЅРµС‚ СЂРёСЃРєР° СЂР°СЃСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё Р±СѓС„РµСЂРѕРІ/С€РµР№РґРµСЂРѕРІ.
+     */
+    private static void fillHorizontalGradientStepped(GuiGraphics graphics, int x1, int y1, int x2, int y2,
+                                                        int colorLeft, int colorRight) {
+        int totalWidth = x2 - x1;
+        if (totalWidth <= 0) return;
+
+        int steps = Math.min(GRADIENT_STEPS, totalWidth);
+        for (int i = 0; i < steps; i++) {
+            float t0 = (float) i / steps;
+            float t1 = (float) (i + 1) / steps;
+
+            int sx1 = x1 + Math.round(t0 * totalWidth);
+            int sx2 = x1 + Math.round(t1 * totalWidth);
+            if (sx2 <= sx1) continue;
+
+            float tMid = (t0 + t1) / 2f;
+            int color = lerpColor(colorLeft, colorRight, tMid);
+
+            graphics.fill(sx1, y1, sx2, y2, color);
+        }
+    }
+
+    private static int lerpColor(int colorFrom, int colorTo, float t) {
+        int aF = (colorFrom >> 24) & 0xFF, rF = (colorFrom >> 16) & 0xFF, gF = (colorFrom >> 8) & 0xFF, bF = colorFrom & 0xFF;
+        int aT = (colorTo >> 24) & 0xFF, rT = (colorTo >> 16) & 0xFF, gT = (colorTo >> 8) & 0xFF, bT = colorTo & 0xFF;
+
+        int a = Math.round(aF + (aT - aF) * t);
+        int r = Math.round(rF + (rT - rF) * t);
+        int g = Math.round(gF + (gT - gF) * t);
+        int b = Math.round(bF + (bT - bF) * t);
+
+        return withAlpha((r << 16) | (g << 8) | b, a);
+    }
+
+    private static int withAlpha(int rgb, int alpha) {
+        return (alpha << 24) | (rgb & 0x00FFFFFF);
+    }
+}
+
+==========================================
+FILE: SuppressCommand.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\command\SuppressCommand.java
+==========================================
+package com.asuppression.mod.command;
+
+import com.asuppression.mod.network.ExplosionFlashPacket;
+import com.asuppression.mod.network.NetworkHandler;
+import com.asuppression.mod.network.SuppressionHitPacket;
+import com.mojang.brigadier.arguments.FloatArgumentType;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.network.PacketDistributor;
+
+/**
+ * РљРѕРјР°РЅРґР° РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ СЌС„С„РµРєС‚Р° Р±РµР· СЃС‚СЂРµР»СЊР±С‹:
+ *   /suppress <0.0 - 1.0>
+ * РќР°РїСЂРёРјРµСЂ: /suppress 1.0  -> РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЌС„С„РµРєС‚ РїРѕРїР°РґР°РЅРёСЏ
+ *           /suppress 0.3  -> Р»С‘РіРєРѕРµ РїРѕРґР°РІР»РµРЅРёРµ, РєР°Рє РѕС‚ Р±Р»РёР·РєРѕРіРѕ РїСЂРѕР»С‘С‚Р°
+ */
+public class SuppressCommand {
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        event.getDispatcher().register(
+                Commands.literal("suppress")
+                        .requires(source -> source.hasPermission(0))
+                        .then(Commands.argument("intensity", FloatArgumentType.floatArg(0.0f, 1.0f))
+                                .executes(ctx -> {
+                                    float intensity = FloatArgumentType.getFloat(ctx, "intensity");
+                                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+
+                                    NetworkHandler.CHANNEL.send(
+                                            PacketDistributor.PLAYER.with(() -> player),
+                                            new SuppressionHitPacket(intensity)
+                                    );
+
+                                    ctx.getSource().sendSuccess(
+                                            () -> Component.literal("Suppression applied: " + intensity), false);
+                                    return 1;
+                                })
+                        )
+        );
+
+        // РўРµСЃС‚ СЌС„С„РµРєС‚Р° РєРѕРЅС‚СѓР·РёРё РѕС‚ РІР·СЂС‹РІР° Р±РµР· СЂРµР°Р»СЊРЅРѕРіРѕ РІР·СЂС‹РІР°: /suppressflash <0..1>
+        event.getDispatcher().register(
+                Commands.literal("suppressflash")
+                        .requires(source -> source.hasPermission(0))
+                        .then(Commands.argument("intensity", FloatArgumentType.floatArg(0.0f, 1.0f))
+                                .executes(ctx -> {
+                                    float intensity = FloatArgumentType.getFloat(ctx, "intensity");
+                                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+
+                                    NetworkHandler.CHANNEL.send(
+                                            PacketDistributor.PLAYER.with(() -> player),
+                                            new ExplosionFlashPacket(intensity, intensity * 0.7f)
+                                    );
+
+                                    ctx.getSource().sendSuccess(
+                                            () -> Component.literal("Explosion flash applied: " + intensity), false);
+                                    return 1;
+                                })
+                        )
+        );
+    }
+}
+
+==========================================
+FILE: ServerSuppressionEvents.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\event\ServerSuppressionEvents.java
+==========================================
+package com.asuppression.mod.event;
+
+import com.asuppression.mod.network.ExplosionFlashPacket;
+import com.asuppression.mod.network.NetworkHandler;
+import com.asuppression.mod.network.SuppressionHitPacket;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.level.ExplosionEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.network.PacketDistributor;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+
+/**
+ * РЎРµСЂРІРµСЂРЅР°СЏ (РІ С‚РѕРј С‡РёСЃР»Рµ РІСЃС‚СЂРѕРµРЅРЅС‹Р№ СЃРµСЂРІРµСЂ РІ РѕРґРёРЅРѕС‡РЅРѕР№ РёРіСЂРµ) Р»РѕРіРёРєР°:
+ *  - РїСЂРё РїРѕРїР°РґР°РЅРёРё Р±С‹СЃС‚СЂРѕРіРѕ СЃРЅР°СЂСЏРґР°/СЃСѓС‰РЅРѕСЃС‚Рё РР›Р РґР°Р»СЊРЅРµРіРѕ hitscan-РІС‹СЃС‚СЂРµР»Р°
+ *    (TACZ Рё РїРѕРґРѕР±РЅС‹Рµ РѕСЂСѓР¶РµР№РЅС‹Рµ РјРѕРґС‹) РІ РёРіСЂРѕРєР° С€Р»С‘Рј РєР»РёРµРЅС‚Сѓ "СЃРїР°Р№Рє" РїРѕРґР°РІР»РµРЅРёСЏ;
+ *  - РїСЂРё РІР·СЂС‹РІРµ С€Р»С‘Рј РІСЃРµРј РёРіСЂРѕРєР°Рј РїРѕР±Р»РёР·РѕСЃС‚Рё "РєРѕРЅС‚СѓР·РёСЋ" (flash) СЃ Р·Р°С‚СѓС…Р°РЅРёРµРј РїРѕ РґРёСЃС‚Р°РЅС†РёРё.
+ */
+public class ServerSuppressionEvents {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    // РќР°СЃРєРѕР»СЊРєРѕ СЃРёР»СЊРЅРѕ РїРѕРґР°РІР»РµРЅРёРµ РїРѕРґСЃРєР°РєРёРІР°РµС‚ РїСЂРё РїСЂСЏРјРѕРј РїРѕРїР°РґР°РЅРёРё (0..1)
+    private static final float DIRECT_HIT_INTENSITY = 1.0f;
+
+    // Р Р°РґРёСѓСЃ, РІ РєРѕС‚РѕСЂРѕРј РІР·СЂС‹РІ РѕС‰СѓС‰Р°РµС‚СЃСЏ РёРіСЂРѕРєРѕРј (Р·Р° РїСЂРµРґРµР»Р°РјРё - СЌС„С„РµРєС‚Р° РЅРµС‚)
+    private static final double EXPLOSION_RADIUS = 20.0;
+
+    // Р”РёСЃС‚Р°РЅС†РёСЏ, РЅР°С‡РёРЅР°СЏ СЃ РєРѕС‚РѕСЂРѕР№ РїРѕРїР°РґР°РЅРёРµ Р±РµР· РѕС‚РґРµР»СЊРЅРѕР№ СЃСѓС‰РЅРѕСЃС‚Рё-СЃРЅР°СЂСЏРґР°
+    // (С‚РёРїРёС‡РЅС‹Р№ СЃР»СѓС‡Р°Р№ hitscan-РѕСЂСѓР¶РёСЏ РІСЂРѕРґРµ TACZ) СЃС‡РёС‚Р°РµС‚СЃСЏ "РІС‹СЃС‚СЂРµР»РѕРј",
+    // Р° РЅРµ СЂСѓРєРѕРїР°С€РЅРѕР№ Р°С‚Р°РєРѕР№ РІ СѓРїРѕСЂ
+    private static final double MELEE_RANGE = 4.0;
+    private static final double MELEE_RANGE_SQR = MELEE_RANGE * MELEE_RANGE;
+
+    @SubscribeEvent
+    public void onLivingHurt(LivingHurtEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+
+        DamageSource source = event.getSource();
+
+        // Р’Р·СЂС‹РІС‹ СѓР¶Рµ РѕР±СЂР°Р±Р°С‚С‹РІР°СЋС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ РІ onExplosionDetonate - РЅРµ Р·Р°РґРІР°РёРІР°РµРј СЌС„С„РµРєС‚
+        if (source.is(DamageTypeTags.IS_EXPLOSION)) return;
+
+        Entity causer = source.getEntity();       // С‚РѕС‚, РєС‚Рѕ РЅР°РЅС‘СЃ СѓСЂРѕРЅ (РёРіСЂРѕРє/РјРѕР±/СЃС‚СЂРµР»РѕРє)
+        Entity direct = source.getDirectEntity();  // СЂРµР°Р»СЊРЅР°СЏ СЃСѓС‰РЅРѕСЃС‚СЊ-СЃРЅР°СЂСЏРґ, Р•РЎР›Р РѕРЅР° РµСЃС‚СЊ;
+        // РµСЃР»Рё РµС‘ РЅРµС‚ - РІР°РЅРёР»СЊ РѕС‚РєР°С‚С‹РІР°РµС‚СЃСЏ РЅР° causer
+
+        // Р’Р Р•РњР•РќРќР«Р™ Р”РРђР“РќРћРЎРўРР§Р•РЎРљРР™ Р›РћР“ - СѓРґР°Р»РёС‚СЊ/Р·Р°РєРѕРјРјРµРЅС‚РёСЂРѕРІР°С‚СЊ РїРѕСЃР»Рµ РѕС‚Р»Р°РґРєРё TACZ.
+        // РЎРјРѕС‚СЂРёС‚Рµ РєРѕРЅСЃРѕР»СЊ СЃРµСЂРІРµСЂР° / logs/latest.log СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ РІС‹СЃС‚СЂРµР»Р° РїРѕ РёРіСЂРѕРєСѓ.
+        LOGGER.info("[AsSuppression DEBUG] hurt player={} amount={} msgId={} typeKey={} " +
+                        "causer={} causerClass={} direct={} directClass={} isIndirect={} distToCauser={}",
+                player.getName().getString(),
+                event.getAmount(),
+                source.getMsgId(),
+                source.type().msgId(),
+                causer,
+                causer == null ? "null" : causer.getClass().getName(),
+                direct,
+                direct == null ? "null" : direct.getClass().getName(),
+                source.isIndirect(),
+                causer == null ? "n/a" : Math.sqrt(causer.distanceToSqr(player)));
+
+        // РЈСЂРѕРЅ СЃР°РјРѕРјСѓ СЃРµР±Рµ (РіРѕР»РѕРґ, РѕРіРѕРЅСЊ, РїР°РґРµРЅРёРµ Рё С‚.Рї.) - РЅРµ СЃС‡РёС‚Р°РµС‚СЃСЏ РїРѕРїР°РґР°РЅРёРµРј
+        if (causer == null && direct == null) return;
+        if (causer == player && direct == player) return;
+
+        boolean hasRealProjectile = direct != null && direct != causer;
+
+        boolean triggered;
+        if (hasRealProjectile) {
+            // Р•СЃС‚СЊ РѕС‚РґРµР»СЊРЅР°СЏ СЃСѓС‰РЅРѕСЃС‚СЊ-СЃРЅР°СЂСЏРґ (СЃС‚СЂРµР»Р°, СЃРЅРµР¶РѕРє, С‚СЂРµР·СѓР±РµС†, РєР°СЃС‚РѕРјРЅС‹Р№
+            // СЃРЅР°СЂСЏРґ РёР· Р»СЋР±РѕРіРѕ РґСЂСѓРіРѕРіРѕ РјРѕРґР°). РЎС‡РёС‚Р°РµРј СЌС‚Рѕ РїРѕРїР°РґР°РЅРёРµРј РїСѓР»Рё РІРЅРµ
+            // Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ СЃРєРѕСЂРѕСЃС‚Рё РЅР° РјРѕРјРµРЅС‚ СЃРѕР±С‹С‚РёСЏ: РјРЅРѕРіРёРµ РјРѕРґРѕРІС‹Рµ СЃРЅР°СЂСЏРґС‹
+            // Рє РјРѕРјРµРЅС‚Сѓ LivingHurtEvent СѓР¶Рµ СѓРґР°Р»РµРЅС‹/РїРѕРіР°С€РµРЅС‹, Рё РёС…
+            // getDeltaMovement() РјРѕР¶РµС‚ Р±С‹С‚СЊ РЅСѓР»РµРІС‹Рј, РґР°Р¶Рµ РµСЃР»Рё Р»РµС‚РµР»Рё Р±С‹СЃС‚СЂРѕ.
+            triggered = direct != player;
+        } else if (causer != null && causer != player) {
+            // РћС‚РґРµР»СЊРЅРѕР№ СЃСѓС‰РЅРѕСЃС‚Рё-СЃРЅР°СЂСЏРґР° РЅРµС‚ - С‚РёРїРёС‡РЅС‹Р№ СЃР»СѓС‡Р°Р№ РґР»СЏ hitscan-РѕСЂСѓР¶РёСЏ
+            // (TACZ Рё РїРѕРґРѕР±РЅС‹Рµ), РєРѕС‚РѕСЂРѕРµ РЅР°РЅРѕСЃРёС‚ СѓСЂРѕРЅ "РјРіРЅРѕРІРµРЅРЅС‹Рј Р»СѓС‡РѕРј" РѕС‚
+            // СЃС‚СЂРµР»РєР° Р±РµР· СЃРїР°РІРЅР° С„РёР·РёС‡РµСЃРєРѕР№ РїСѓР»Рё. РћС‚Р»РёС‡Р°РµРј РІС‹СЃС‚СЂРµР» РѕС‚ СЂСѓРєРѕРїР°С€РЅРѕР№
+            // Р°С‚Р°РєРё РїРѕ РґРёСЃС‚Р°РЅС†РёРё РјРµР¶РґСѓ Р°С‚Р°РєСѓСЋС‰РёРј Рё РёРіСЂРѕРєРѕРј.
+            double distSqr = causer.distanceToSqr(player);
+            triggered = distSqr > MELEE_RANGE_SQR;
+        } else {
+            triggered = false;
+        }
+
+        if (!triggered) return;
+
+        NetworkHandler.CHANNEL.send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new SuppressionHitPacket(DIRECT_HIT_INTENSITY)
+        );
+    }
+
+    @SubscribeEvent
+    public void onExplosionDetonate(ExplosionEvent.Detonate event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+
+        Vec3 center = event.getExplosion().getPosition();
+
+        for (ServerPlayer player : level.players()) {
+            double dist = player.position().distanceTo(center);
+            if (dist > EXPLOSION_RADIUS) continue;
+
+            // Р§РµРј Р±Р»РёР¶Рµ Рє СЌРїРёС†РµРЅС‚СЂСѓ, С‚РµРј СЃРёР»СЊРЅРµРµ РєРѕРЅС‚СѓР·РёСЏ. РЈ СЃР°РјРѕРіРѕ СЌРїРёС†РµРЅС‚СЂР° - РїРѕС‡С‚Рё РјР°РєСЃРёРјСѓРј.
+            float falloff = (float) (1.0 - (dist / EXPLOSION_RADIUS));
+            falloff = falloff * falloff; // РєРІР°РґСЂР°С‚РёС‡РЅРѕРµ Р·Р°С‚СѓС…Р°РЅРёРµ - СЂРµР°Р»РёСЃС‚РёС‡РЅРµРµ, С‡РµРј Р»РёРЅРµР№РЅРѕРµ
+
+            float flashIntensity = Math.min(1.0f, falloff * 1.2f);
+            float suppressionKick = Math.min(1.0f, falloff * 0.9f);
+
+            if (flashIntensity <= 0.02f) continue;
+
+            NetworkHandler.CHANNEL.send(
+                    PacketDistributor.PLAYER.with(() -> player),
+                    new ExplosionFlashPacket(flashIntensity, suppressionKick)
+            );
+        }
+    }
+}
+==========================================
+FILE: ExplosionFlashPacket.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\network\ExplosionFlashPacket.java
+==========================================
+package com.asuppression.mod.network;
+
+import com.asuppression.mod.client.ClientSuppressionHandler;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
+import net.minecraftforge.network.NetworkEvent;
+
+import java.util.function.Supplier;
+
+/**
+ * РџР°РєРµС‚ СЃРµСЂРІРµСЂ -> РєР»РёРµРЅС‚: "СЂСЏРґРѕРј РІР·РѕСЂРІР°Р»РѕСЃСЊ, РїРѕРґРЅРёРјРё РєРѕРЅС‚СѓР·РёСЋ (flash) РґРѕ intensity"
+ * РљРѕРЅС‚СѓР·РёСЏ С‚СѓСЃРєРЅРёС‚ Рё РѕР±РµСЃС†РІРµС‡РёРІР°РµС‚ СЌРєСЂР°РЅ, РѕС‚РґРµР»СЊРЅРѕ РѕС‚ РѕР±С‹С‡РЅРѕРіРѕ РїРѕРґР°РІР»РµРЅРёСЏ РїСѓР»СЏРјРё.
+ */
+public class ExplosionFlashPacket {
+
+    private final float intensity;
+    private final float suppressionKick;
+
+    public ExplosionFlashPacket(float intensity, float suppressionKick) {
+        this.intensity = intensity;
+        this.suppressionKick = suppressionKick;
+    }
+
+    public static void encode(ExplosionFlashPacket msg, FriendlyByteBuf buf) {
+        buf.writeFloat(msg.intensity);
+        buf.writeFloat(msg.suppressionKick);
+    }
+
+    public static ExplosionFlashPacket decode(FriendlyByteBuf buf) {
+        return new ExplosionFlashPacket(buf.readFloat(), buf.readFloat());
+    }
+
+    public static void handle(ExplosionFlashPacket msg, Supplier<NetworkEvent.Context> ctxSupplier) {
+        NetworkEvent.Context ctx = ctxSupplier.get();
+        ctx.enqueueWork(() ->
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
+                    ClientSuppressionHandler.spikeFlash(msg.intensity);
+                    // РІР·СЂС‹РІ СЂСЏРґРѕРј С‚Р°РєР¶Рµ СЂРµР·РєРѕ С‚СЂСЏСЃС‘С‚ РєР°РјРµСЂСѓ, РєР°Рє Рё РїРѕРїР°РґР°РЅРёРµ РїСѓР»РµР№
+                    ClientSuppressionHandler.spikeSuppression(msg.suppressionKick);
+                })
+        );
+        ctx.setPacketHandled(true);
+    }
+}
+
+==========================================
+FILE: NetworkHandler.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\network\NetworkHandler.java
+==========================================
+package com.asuppression.mod.network;
+
+import com.asuppression.mod.AsSuppressionMod;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
+
+public class NetworkHandler {
+
+    private static final String PROTOCOL_VERSION = "1";
+
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+            new ResourceLocation(AsSuppressionMod.MODID, "main"),
+            () -> PROTOCOL_VERSION,
+            PROTOCOL_VERSION::equals,
+            PROTOCOL_VERSION::equals
+    );
+
+    public static void register() {
+        int id = 0;
+        CHANNEL.registerMessage(id++, SuppressionHitPacket.class,
+                SuppressionHitPacket::encode,
+                SuppressionHitPacket::decode,
+                SuppressionHitPacket::handle);
+
+        CHANNEL.registerMessage(id++, ExplosionFlashPacket.class,
+                ExplosionFlashPacket::encode,
+                ExplosionFlashPacket::decode,
+                ExplosionFlashPacket::handle);
+    }
+}
+
+==========================================
+FILE: SuppressionHitPacket.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\network\SuppressionHitPacket.java
+==========================================
+package com.asuppression.mod.network;
+
+import com.asuppression.mod.client.ClientSuppressionHandler;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
+import net.minecraftforge.network.NetworkEvent;
+
+import java.util.function.Supplier;
+
+/**
+ * РџР°РєРµС‚ СЃРµСЂРІРµСЂ -> РєР»РёРµРЅС‚: "С‚РµР±СЏ Р·Р°РґРµР»Рѕ/Р·Р°РґРµР»Рѕ СЂСЏРґРѕРј, РїРѕРґРЅРёРјРё РїРѕРґР°РІР»РµРЅРёРµ РґРѕ intensity"
+ */
+public class SuppressionHitPacket {
+
+    private final float intensity;
+
+    public SuppressionHitPacket(float intensity) {
+        this.intensity = intensity;
+    }
+
+    public static void encode(SuppressionHitPacket msg, FriendlyByteBuf buf) {
+        buf.writeFloat(msg.intensity);
+    }
+
+    public static SuppressionHitPacket decode(FriendlyByteBuf buf) {
+        return new SuppressionHitPacket(buf.readFloat());
+    }
+
+    public static void handle(SuppressionHitPacket msg, Supplier<NetworkEvent.Context> ctxSupplier) {
+        NetworkEvent.Context ctx = ctxSupplier.get();
+        ctx.enqueueWork(() ->
+                DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
+                        ClientSuppressionHandler.spikeSuppression(msg.intensity))
+        );
+        ctx.setPacketHandled(true);
+    }
+}
+
+==========================================
+FILE: AsSuppressionMod.java
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\java\com\asuppression\mod\AsSuppressionMod.java
+==========================================
+package com.asuppression.mod;
+
+import com.asuppression.mod.client.BWEffectHandler;
+import com.asuppression.mod.client.ClientSuppressionHandler;
+import com.asuppression.mod.command.SuppressCommand;
+import com.asuppression.mod.event.ServerSuppressionEvents;
+import com.asuppression.mod.network.NetworkHandler;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
+
+@Mod(AsSuppressionMod.MODID)
+public class AsSuppressionMod {
+
+    public static final String MODID = "assuppression";
+
+    public AsSuppressionMod() {
+        NetworkHandler.register();
+
+        // РЎРѕР±С‹С‚РёРµ РїРѕРїР°РґР°РЅРёСЏ РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ РІСЃРµРіРґР° (Рё РЅР° СЃРµСЂРІРµСЂРµ, Рё РІ singleplayer, РіРґРµ СЃРµСЂРІРµСЂ РІСЃС‚СЂРѕРµРЅ)
+        MinecraftForge.EVENT_BUS.register(new ServerSuppressionEvents());
+        MinecraftForge.EVENT_BUS.register(new SuppressCommand());
+
+        // РљР»РёРµРЅС‚СЃРєРёРµ С…РµРЅРґР»РµСЂС‹ (СЂРµРЅРґРµСЂ РІРёРЅСЊРµС‚РєРё, С‚СЂСЏСЃРєР° РєР°РјРµСЂС‹, РґРµС‚РµРєС‚ "РїСѓР»СЊ" СЂСЏРґРѕРј) СЂРµРіРёСЃС‚СЂРёСЂСѓРµРј С‚РѕР»СЊРєРѕ РЅР° РєР»РёРµРЅС‚Рµ
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> AsSuppressionMod::registerClient);
+    }
+
+    private static void registerClient() {
+        MinecraftForge.EVENT_BUS.register(new ClientSuppressionHandler());
+        MinecraftForge.EVENT_BUS.register(new BWEffectHandler());
+    }
+}
+
+==========================================
+FILE: grayscale.json
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\resources\assets\assuppression\shaders\post\grayscale.json
+==========================================
+{
+    "targets": [ "swap" ],
+    "passes": [
+        {
+            "name": "assuppression:grayscale",
+            "intarget": "minecraft:main",
+            "outtarget": "swap",
+            "uniforms": [
+                { "name": "Intensity", "values": [ 1.0 ] }
+            ]
+        },
+        {
+            "name": "minecraft:blit",
+            "intarget": "swap",
+            "outtarget": "minecraft:main",
+            "uniforms": []
+        }
+    ]
+}
+
+==========================================
+FILE: grayscale.json
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\resources\assets\assuppression\shaders\program\grayscale.json
+==========================================
+{
+    "vertex": "assuppression:grayscale",
+    "fragment": "assuppression:grayscale",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0] },
+        { "name": "InSize", "type": "float", "count": 2, "values": [1.0, 1.0] },
+        { "name": "OutSize", "type": "float", "count": 2, "values": [1.0, 1.0] },
+        { "name": "Intensity", "type": "float", "count": 1, "values": [1.0] }
+    ]
+}
+
+==========================================
+FILE: mods.toml
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\resources\META-INF\mods.toml
+==========================================
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+issueTrackerURL="https://github.com/"
+
+[[mods]]
+modId="assuppression"
+version="1.0.0"
+displayName="AsSuppression"
+authors="You"
+description='''Squad-style suppression effect mod'''
+
+[[dependencies.assuppression]]
+modId="forge"
+mandatory=true
+versionRange="[47.3.0,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.assuppression]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,)"
+ordering="NONE"
+side="BOTH"
+==========================================
+FILE: pack.mcmeta
+PATH: C:\Users\user\Desktop\mods\AAS подавление\src\main\resources\pack.mcmeta
+==========================================
+{
+    "pack": {
+        "description": "AsSuppression resources",
+        "pack_format": 15
+    }
+}
+
+==========================================
+FILE: gradle.properties
+PATH: C:\Users\user\Desktop\mods\AAS подавление\gradle.properties
+==========================================
+org.gradle.jvmargs=-Xmx3G
+org.gradle.daemon=false
+
+minecraft_version=1.20.1
+forge_version=47.3.0
+
+mod_id=assuppression
+mod_name=AsSuppression
+mod_version=1.0.0
+mod_group_id=com.asuppression.mod
+mod_authors=You
+mod_description=Squad-style suppression effect mod
+
